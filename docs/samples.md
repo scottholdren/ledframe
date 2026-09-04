@@ -41,3 +41,16 @@ smart-mirror glass is the alternative but weighs 2× and costs 3×), gray #2064
 Full-size sheet, 48×36: two-way acrylic ~$100–150 (twowaymirrors.com max
 49×97, use their calculator; T&T Plastic Land is pickup-only at this size),
 smoked #2074 ~$80. Diffuser film for full size is a roll purchase if D2 wins.
+
+## LED strip (full build, not a sample)
+
+**BTF-LIGHTING WS2812B-ECO, 5 V, 30 LED/m, 5 m / 150 px, IP30 — Amazon ASIN B088BB8WTZ**
+(black-PCB variant preferred; SEZO B097BX7P3V is a same-spec alternate).
+
+- 30/m = 33.3 mm pitch, exactly the plan's grid. No cutting to odd intervals.
+- One 5 m reel = 4 rows of 36 (144 px) + 6 spare. 27 rows ÷ 4 = 6.75 → **7 reels**.
+- ECO vs standard WS2812B: same 60 mA/px max, smaller die so a bit dimmer
+  and cheaper; BTF's ECO reels have wider power traces (less droop). Fine here
+  since we cap brightness and the face glass eats light anyway.
+- Price not verified by script (Amazon blocks fetches); expect ~$15–22/reel,
+  ~$110–150 for 7 reels.
