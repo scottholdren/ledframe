@@ -101,13 +101,15 @@ top rear — 972 LEDs power-capped won't run hot, but give heat a path.
 ## 7. Voice authoring — the actual new build
 
 **Architecture: the wall stays dumb; a hidden companion computer does the
-talking.** The ESP32 keeps doing exactly what v1 proved (poll → cache →
-play). The new box turns speech into published animations:
+talking.** The ESP32 keeps doing exactly what v1 proved (receive → cache →
+play); only the receive side gains a serial port. The new box turns speech
+into animations:
 
 ```
 mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
-   → sandboxed execution renders frames JSON → validate → publish
-   → wall polls it seconds later          → spoken/earcon confirmation
+   → sandboxed execution renders frames JSON → validate
+   → USB serial to the ESP32 (instant)      → spoken/earcon confirmation
+   (GitHub publish kept for the v1 wall and as the wall's fallback source)
 ```
 
 - **Hardware**: Raspberry Pi 5 (~$80) + USB conference mic or ReSpeaker
@@ -129,10 +131,29 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
   (publish a canned working animation while generating).
 - **Refinement loop**: keep conversation state on the Pi so "slower" /
   "more blue" work — same history-chaining as the v1 ✨ Describe feature.
-- **Publish channel**: reuse GitHub (wall firmware unchanged, works from
-  anywhere) — or have the Pi serve `current.json` on the LAN and point
-  the wall at it (no internet dependency at all). GitHub first; LAN mode
-  is a later resilience upgrade.
+- **Delivery channel — DECIDED 2026-09-04: USB serial, Pi → ESP32.**
+  Both boards live in the frame, so a USB cable replaces the internet hop.
+  GitHub stays as the channel for the *desk prototype* (step 3, playing on
+  the v1 wall) and as a fallback the wall can still poll if the Pi is
+  absent. The offline-first rule is unchanged: the ESP32 keeps its last
+  animation in flash and plays it whenever the serial link is quiet.
+
+  Two message kinds over the wire, framed as length-prefixed packets:
+  1. **ANIM** — the same palette-indexed animation JSON the wall already
+     parses, delivered whole. Firmware treats it exactly like a fetched
+     `current.json`: validate → cache to flash → play. Zero format change.
+  2. **FRAME** — one raw frame (972 bytes of palette indices, or 2,916
+     bytes RGB) at up to ~30 fps. The ESP32 shows it immediately and
+     falls back to the cached ANIM after a short timeout with no frames.
+     This is what GitHub can never do: sound-reactive idle, a live
+     "thinking" shimmer while Claude generates, and animations longer than
+     the ESP32's RAM (the Pi holds the frames and streams).
+
+  Wire: S3 native USB (CDC) or the DevKitC-1's UART-bridge port — either
+  works; the UART port also leaves native USB free for flashing. Baud is a
+  non-issue: a 972-byte frame at 30 fps is ~30 KB/s. Firmware reads the
+  serial port in `loop()` alongside the existing Wi-Fi poller; whichever
+  source delivered most recently wins.
 
 ## 8. Budget sketch
 
@@ -165,17 +186,19 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
    at full 36×27 with the bench app.
 5. **Baffle print farm** (runs in parallel — ~14 tiles of 6×6 cells).
 6. **Frame + optical stack assembly** → the mirror moment.
-7. **Marry voice box into the frame**, tune, done.
+7. **Marry voice box into the frame**: USB cable to the S3, add the
+   serial receiver to firmware, tune, done.
 
 ## 10. Open questions **[DECIDE]**
 - Mirror vs smoked black (step 1 answers this).
 - Wake word / name of the thing? (It's about to be a character.)
 - Voice stack details: cloud STT (fast to build) vs local Whisper
   (no audio leaves the room) — start cloud, revisit.
-- Does v2 replace v1's wall or live alongside it? (Same publish channel
-  could drive both — one voice, two surfaces.)
+- Does v2 replace v1's wall or live alongside it? (The Pi can publish
+  ANIMs to GitHub too, so v1 keeps working — one voice, two surfaces.)
 - Sound-reactive idle mode while nobody's talking to it? (Pi has the mic
-  anyway; FFT → publish parameter tweaks.)
+  anyway; FFT → stream FRAME packets over serial. Cheap now that the
+  serial channel exists.)
 
 ---
 
