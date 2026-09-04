@@ -6,9 +6,10 @@ glass face, that you talk to** — spontaneous animations from voice prompts,
 no web interface. When the LEDs are off it reads as a mirror on the wall;
 when they light, the image floats up through the glass.
 
-v1 proved the entire pipeline this builds on: publish → poll → play,
-offline-first firmware, generated animations, the works. v2 changes the
-display physics and the authoring interface.
+v1 proved the pieces this builds on: offline-first firmware that caches
+and plays a palette-indexed animation, and Claude-generated animations.
+v2 changes the display physics, the authoring interface, and the delivery
+path — **no internet, no GitHub; a USB cable inside the frame.**
 
 ---
 
@@ -88,33 +89,35 @@ top rear — 972 LEDs power-capped won't run hot, but give heat a path.
 ## 6. Electronics & firmware — mostly a port
 
 - **Controller: ESP32-S3 DevKitC-1** (one on hand). v1 firmware carries
-  over nearly unchanged: same poll/fetch/cache/modes, same JSON format,
-  `NUM_LEDS=972`, `WS2812B/GRB` at 5 V (back to v1-strip color order —
-  verify at first light), same level-shifter-if-needed data path.
+  over with the Wi-Fi poller swapped for a serial receiver (§7): same
+  cache/play/modes, same JSON format, `NUM_LEDS=972`, `WS2812B/GRB` at 5 V
+  (back to v1-strip color order — verify at first light), same
+  level-shifter-if-needed data path. No Wi-Fi credentials in v2 firmware.
 - One firmware tweak: raise `MAX_ANIM_BYTES` (PSRAM makes it free) so
   long loops at 972 cells fit; maybe chunked JSON parse if generation
   starts producing 100+ frame epics.
-- The **designer app still works** for v2 — the grid is parametric
-  (36×27 is within the 32-cap? No: raise `MAX_DIM` 32→40 in app+firmware).
-  The app becomes the debug/manual channel; voice is the primary one.
+- The **v1 designer app** is still useful as an authoring/debug tool:
+  raise `MAX_DIM` 32→40, paint at 36×27, export the JSON file, and send it
+  over the cable with the bench `send.py`. Its Publish button stays wired
+  to v1 only. Voice is v2's primary channel.
 
 ## 7. Voice authoring — the actual new build
 
 **Architecture: the wall stays dumb; a hidden companion computer does the
-talking.** The ESP32 keeps doing exactly what v1 proved (receive → cache →
-play); only the receive side gains a serial port. The new box turns speech
-into animations:
+talking, and they're joined by a USB cable.** The ESP32 does what v1
+proved (receive → cache → play); only the receive side changes from
+Wi-Fi poll to serial. The companion turns speech into animations:
 
 ```
 mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
-   → sandboxed execution renders frames JSON → validate
-   → USB serial to the ESP32 (instant)      → spoken/earcon confirmation
-   (GitHub publish kept for the v1 wall and as the wall's fallback source)
+   → sandboxed execution renders frames → validate
+   → USB serial to the ESP32 (instant)   → spoken/earcon confirmation
+   → saved to the Pi's local library
 ```
 
 - **Hardware**: Raspberry Pi 5 (~$80) + USB conference mic or ReSpeaker
-  array (~$20–60), hidden in the frame. (A Mac mini or any always-on
-  computer also works; Pi is the tidy in-frame answer.)
+  array (~$20–60), hidden in the frame. A Mac plays the Pi's role during
+  bench work — same code, same cable.
 - **The key architectural insight from v1**: don't ask the model to emit
   972-cell frame JSON token by token (slow, expensive, error-prone at this
   resolution). Ask it to **write a small JS/Python generator program** —
@@ -124,36 +127,41 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
   the session's own working method, automated.
 - **Safety rails**: run generated code in a subprocess sandbox (no net,
   no fs, timeout); validate output with the same rules as v1's
-  `validateDesign`; publish only on pass. Wall's offline-first design
-  means a bad generation can never take it down.
+  `validateDesign`; send only on pass. The wall's cached-animation
+  fallback means a bad generation can never take it down.
 - **Feedback channel**: small speaker for "okay, painting rain" / error
-  earcons; optionally the wall itself flashes a "thinking" pattern
-  (publish a canned working animation while generating).
+  earcons, plus the wall itself shows a "thinking" shimmer streamed live
+  while Claude generates.
 - **Refinement loop**: keep conversation state on the Pi so "slower" /
   "more blue" work — same history-chaining as the v1 ✨ Describe feature.
-- **Delivery channel — DECIDED 2026-09-04: USB serial, Pi → ESP32.**
-  Both boards live in the frame, so a USB cable replaces the internet hop.
-  GitHub stays as the channel for the *desk prototype* (step 3, playing on
-  the v1 wall) and as a fallback the wall can still poll if the Pi is
-  absent. The offline-first rule is unchanged: the ESP32 keeps its last
-  animation in flash and plays it whenever the serial link is quiet.
+- **Library**: every accepted animation is saved on the Pi as JSON with
+  its prompt and timestamp. That replaces the git history v1 got for free,
+  and it's what makes "play the rain one from yesterday" possible by voice.
 
-  Two message kinds over the wire, framed as length-prefixed packets:
-  1. **ANIM** — the same palette-indexed animation JSON the wall already
-     parses, delivered whole. Firmware treats it exactly like a fetched
-     `current.json`: validate → cache to flash → play. Zero format change.
-  2. **FRAME** — one raw frame (972 bytes of palette indices, or 2,916
-     bytes RGB) at up to ~30 fps. The ESP32 shows it immediately and
-     falls back to the cached ANIM after a short timeout with no frames.
-     This is what GitHub can never do: sound-reactive idle, a live
-     "thinking" shimmer while Claude generates, and animations longer than
-     the ESP32's RAM (the Pi holds the frames and streams).
+### Delivery: USB serial, Pi → ESP32 (decided 2026-09-04)
 
-  Wire: S3 native USB (CDC) or the DevKitC-1's UART-bridge port — either
-  works; the UART port also leaves native USB free for flashing. Baud is a
-  non-issue: a 972-byte frame at 30 fps is ~30 KB/s. Firmware reads the
-  serial port in `loop()` alongside the existing Wi-Fi poller; whichever
-  source delivered most recently wins.
+No network hop anywhere. Length-prefixed packets, two kinds:
+
+1. **ANIM** — the same palette-indexed animation JSON the wall already
+   parses, delivered whole. Firmware treats it exactly like v1 treated a
+   fetched `current.json`: validate → cache to flash → play. Zero format
+   change.
+2. **FRAME** — one raw frame (972 bytes of palette indices, or 2,916
+   bytes RGB) at up to ~30 fps. The ESP32 shows it immediately and falls
+   back to the cached ANIM after a short timeout with no frames. This
+   enables things a file channel never could: sound-reactive idle, the
+   live "thinking" shimmer, and animations longer than the ESP32's RAM
+   (the Pi holds the frames and streams).
+
+**Offline rule, unchanged from v1**: the ESP32 always has the last ANIM
+in flash and plays it whenever the serial link is quiet — Pi rebooting,
+Claude down, cable unplugged, the wall keeps going.
+
+Wire: the DevKitC-1's UART-bridge USB port (leaves native USB free for
+flashing; native CDC also works). Bandwidth is a non-issue: a 972-byte
+frame at 30 fps is ~30 KB/s. Firmware reads the port in `loop()`; the
+v1 Wi-Fi poller is deleted (recoverable from v1's git history if a
+network mode is ever wanted).
 
 ## 8. Budget sketch
 
@@ -175,36 +183,40 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
 
 1. **Optical test box** (weekend, ~$40): 2×2 cells, spare v1 pixels, both
    face-material samples → settles mirror vs smoked with eyes, not specs.
-2. **Firmware port + bench grid**: `NUM_LEDS=972` build on the spare S3;
-   drive one full 36-LED row on the bench; bump `MAX_DIM` in app+firmware
-   and prove the v1 designer app painting 36×27.
-3. **Voice prototype on the desk** (pure software, can start today):
-   Pi/Mac + mic → wake → STT → Claude-writes-generator → publish → the
-   *v1 wall* plays it. De-risks the hard new part against proven hardware
-   before v2 exists.
+   (Samples: `docs/samples.md`.)
+2. **Serial receiver + bench rig** (can start today): fork the v1 wall
+   sketch, replace the Wi-Fi poller with the ANIM/FRAME serial receiver,
+   `NUM_LEDS=972`, `MAX_DIM` 32→40. Spare S3 on the desk, USB to the Mac.
+   First target is the onboard pixel; then one 36-LED row from the reels.
+   A Mac-side `send.py` that pushes a v1 animation file over the cable is
+   the first demo.
+3. **Voice pipeline on the Mac**, driving that bench rig over the same
+   cable: mic → wake → STT → Claude-writes-generator → sandbox → validate
+   → ANIM packet. Then FRAME streaming for the thinking shimmer. This
+   de-risks the hard new part on real hardware with the real channel.
 4. **Backboard + strips + power**: the big soldering weekend. First light
-   at full 36×27 with the bench app.
+   at full 36×27, driven from the Mac over USB.
 5. **Baffle print farm** (runs in parallel — ~14 tiles of 6×6 cells).
 6. **Frame + optical stack assembly** → the mirror moment.
-7. **Marry voice box into the frame**: USB cable to the S3, add the
-   serial receiver to firmware, tune, done.
+7. **Move the voice code to the Pi**, mount Pi + mic + speaker in the
+   frame, plug the same cable into the S3, tune, done.
 
 ## 10. Open questions **[DECIDE]**
 - Mirror vs smoked black (step 1 answers this).
 - Wake word / name of the thing? (It's about to be a character.)
 - Voice stack details: cloud STT (fast to build) vs local Whisper
   (no audio leaves the room) — start cloud, revisit.
-- Does v2 replace v1's wall or live alongside it? (The Pi can publish
-  ANIMs to GitHub too, so v1 keeps working — one voice, two surfaces.)
+- v1's wall keeps its own GitHub poller and designer app, untouched. If
+  "one voice, two surfaces" is ever wanted, the Pi could push to v1 over
+  Wi-Fi as an add-on — not in scope.
 - Sound-reactive idle mode while nobody's talking to it? (Pi has the mic
-  anyway; FFT → stream FRAME packets over serial. Cheap now that the
-  serial channel exists.)
+  anyway; FFT → FRAME packets. Cheap given the serial channel.)
 
 ---
 
-*Context note: this plan seeds a fresh project directory. The full v1
-engineering record (gotchas, build flags, verified subsystems) lives in
-`~/dev/kenled` — its `PLAN.md`, `firmware/README.md`, and git history are
-the reference library. Claude sessions started in this directory won't
+*Context note: the full v1 engineering record (gotchas, build flags,
+verified subsystems) lives in `~/dev/kenled` — its `PLAN.md`,
+`firmware/README.md`, and git history are the reference library. v2's
+firmware starts as a fork of `firmware/kenled-wall`. Claude sessions started in this directory won't
 inherit v1's project memory automatically; this file plus those references
 are the bridge.*
