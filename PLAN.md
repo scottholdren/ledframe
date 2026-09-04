@@ -118,9 +118,9 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
 - **Hardware** (decided 2026-09-04, audio leaves the room for latency):
   | Role | Part |
   |---|---|
-  | Compute | Raspberry Pi 5 (on hand) + active cooler + 32 GB A2 card, spare card kept flashed |
+  | Compute | Raspberry Pi 4 B (on hand; 2 GB+ fine) + heatsink + 32 GB A2 card, spare card kept flashed. Pi 5 also works |
   | Mic + speaker | ReSpeaker XVF3800 USB 4-mic array — hardware AEC/beamforming, 5 m pickup, JST out for a 3 W speaker (that feed is the echo-cancel reference) |
-  | Pi power | Official 27 W USB-C supply on its own cord (Pi 5 caps USB at 600 mA without PD) |
+  | Pi power | Official 15 W USB-C supply on its own cord (27 W if Pi 5) |
   | Link | USB cable, Pi → S3 UART-bridge port; udev names it `/dev/ledframe-wall` |
   Mic slot in the bottom rail, speaker facing down. A Mac stands in for the
   Pi during bench work — same code, same cable.
@@ -194,7 +194,7 @@ network mode is ever wanted).
 | Frosted acrylic diffuser 4'×3' | 50–70 |
 | Baffle: ~1.5 kg black PETG (printed as tiles) | 30 |
 | Frame lumber/extrusion, backboard, paint, hardware | 60–80 |
-| ReSpeaker XVF3800 + speaker + 27 W PSU + cooler + 2 SD cards (Pi on hand) | 100–120 |
+| ReSpeaker XVF3800 + speaker + 15 W PSU + heatsink + 2 SD cards (Pi on hand) | 95–110 |
 | Samples/test-rig materials | 40 |
 | **Total** | **≈ $500–650** |
 

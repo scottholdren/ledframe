@@ -1,6 +1,6 @@
 # The Pi as firmware
 
-The voice box is a Raspberry Pi 5, but it's treated like a microcontroller:
+The voice box is a Raspberry Pi (4 B or 5 — either works), but it's treated like a microcontroller:
 nothing on it is configured by hand, and starting over is a five-minute
 mechanical procedure. Everything the box *is* lives in this directory.
 
@@ -18,7 +18,7 @@ Secrets (`ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`) live only in
 ## Flash a card (Mac)
 
 1. Open **Raspberry Pi Imager** (`brew install --cask raspberry-pi-imager`).
-2. Device: Raspberry Pi 5. OS: **Raspberry Pi OS Lite (64-bit)**. Storage: the card.
+2. Device: Raspberry Pi 4 (or 5). OS: **Raspberry Pi OS Lite (64-bit)**. Storage: the card.
 3. Click **Edit Settings** before writing, and set:
    - Hostname `ledframe`
    - Username `scott`, a password
@@ -60,7 +60,10 @@ is the one thing worth backing up (`/opt/ledframe/library/`, once it exists).
 
 ## Power
 
-The Pi 5 caps USB ports at 600 mA unless it sees a 5 A PD supply. The
-ReSpeaker with a speaker attached can exceed that. Use the official 27 W
-supply on its own cord. Bootstrap also sets `usb_max_current_enable=1` as a
-belt-and-braces measure for a non-PD 5 V tap.
+Give the Pi its own official supply on its own cord, not a tap off the LED
+rail — keeps PSU noise out of the audio path.
+
+- **Pi 4 B**: official 15 W (5.1 V 3 A). USB ports get ~1.2 A total, enough
+  for the ReSpeaker + small speaker. Passive heatsink is sufficient.
+- **Pi 5**: official 27 W. Without a PD supply the Pi 5 caps USB at 600 mA;
+  bootstrap sets `usb_max_current_enable=1` on Pi 5 only, as a fallback.

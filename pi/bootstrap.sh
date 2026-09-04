@@ -67,7 +67,8 @@ systemctl restart ledframe.service
 
 log "pi 5 usb current (only matters if NOT on a PD supply)"
 CFG=/boot/firmware/config.txt
-if [ -f "$CFG" ] && ! grep -q '^usb_max_current_enable=1' "$CFG"; then
+if grep -q 'Raspberry Pi 5' /proc/device-tree/model 2>/dev/null \
+   && [ -f "$CFG" ] && ! grep -q '^usb_max_current_enable=1' "$CFG"; then
   echo 'usb_max_current_enable=1' >> "$CFG"
   echo "  added usb_max_current_enable=1 (takes effect next boot)"
 fi
