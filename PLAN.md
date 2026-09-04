@@ -115,9 +115,30 @@ mic (in frame) → wake word → STT → Claude (writes a GENERATOR PROGRAM)
    → saved to the Pi's local library
 ```
 
-- **Hardware**: Raspberry Pi 5 (~$80) + USB conference mic or ReSpeaker
-  array (~$20–60), hidden in the frame. A Mac plays the Pi's role during
-  bench work — same code, same cable.
+- **Hardware** (decided 2026-09-04, audio leaves the room for latency):
+  | Role | Part |
+  |---|---|
+  | Compute | Raspberry Pi 5 (on hand) + active cooler + 32 GB A2 card, spare card kept flashed |
+  | Mic + speaker | ReSpeaker XVF3800 USB 4-mic array — hardware AEC/beamforming, 5 m pickup, JST out for a 3 W speaker (that feed is the echo-cancel reference) |
+  | Pi power | Official 27 W USB-C supply on its own cord (Pi 5 caps USB at 600 mA without PD) |
+  | Link | USB cable, Pi → S3 UART-bridge port; udev names it `/dev/ledframe-wall` |
+  Mic slot in the bottom rail, speaker facing down. A Mac stands in for the
+  Pi during bench work — same code, same cable.
+- **The Pi is treated as firmware**: nothing hand-configured. Imager with
+  saved settings → `pi/bootstrap.sh` → done; `pi/deploy.sh` is the flash
+  button; overlay (read-only) root once it's in the frame. See `pi/README.md`.
+- **Cloud**: two API keys and nothing else — Anthropic (Claude writes the
+  generators) and a streaming STT vendor (Deepgram). Outbound only; no
+  ports, no hosting, no database. ~2–5¢ per utterance. Wake word
+  (openWakeWord/Porcupine) and VAD (Silero) run locally. Tailscale on the
+  Pi for SSH-in once it's sealed up.
+- **Latency budget** (end of speech → animation): VAD ~0.4 s, streaming STT
+  ~0.3 s, Claude 2–4 s (small output via a rich helper library, cached
+  prompt, low effort / fast mode), render+send ~0.2 s. Perceived latency is
+  handled separately: earcon + shimmer within 100 ms, palette streamed
+  first so the shimmer takes the right color ~1 s in, no-LLM fast paths
+  for "slower/brighter/again/play the rain one", speculative fast+strong
+  model in parallel with crossfade.
 - **The key architectural insight from v1**: don't ask the model to emit
   972-cell frame JSON token by token (slow, expensive, error-prone at this
   resolution). Ask it to **write a small JS/Python generator program** —
@@ -173,7 +194,7 @@ network mode is ever wanted).
 | Frosted acrylic diffuser 4'×3' | 50–70 |
 | Baffle: ~1.5 kg black PETG (printed as tiles) | 30 |
 | Frame lumber/extrusion, backboard, paint, hardware | 60–80 |
-| Raspberry Pi 5 + mic + speaker + SD | 110–140 |
+| ReSpeaker XVF3800 + speaker + 27 W PSU + cooler + 2 SD cards (Pi on hand) | 100–120 |
 | Samples/test-rig materials | 40 |
 | **Total** | **≈ $500–650** |
 

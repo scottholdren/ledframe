@@ -1,0 +1,5 @@
+# ESP32-S3 DevKitC-1 — either USB port gets a stable name.
+# UART bridge (CP2102N) — the port we use for the frame link:
+SUBSYSTEM=="tty", ATTRS{idVendor}=="10c4", ATTRS{idProduct}=="ea60", SYMLINK+="ledframe-wall", MODE="0660", GROUP="dialout"
+# Native USB-CDC (if the sketch is built with USB CDC on boot):
+SUBSYSTEM=="tty", ATTRS{idVendor}=="303a", ATTRS{idProduct}=="1001", SYMLINK+="ledframe-wall", MODE="0660", GROUP="dialout"

@@ -1,0 +1,5 @@
+# Pinned loosely for now; tighten once the voice pipeline stabilises.
+pyserial>=3.5
+numpy>=1.26
+sounddevice>=0.4.6
+anthropic>=1.0

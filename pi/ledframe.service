@@ -1,0 +1,18 @@
+[Unit]
+Description=ledframe voice box
+After=network-online.target sound.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=@APP_USER@
+EnvironmentFile=/etc/ledframe.env
+WorkingDirectory=/opt/ledframe/src
+ExecStart=/opt/ledframe/venv/bin/python -m voice
+Restart=always
+RestartSec=3
+# generated animation programs run as subprocesses; keep the box tidy
+Nice=-5
+
+[Install]
+WantedBy=multi-user.target
