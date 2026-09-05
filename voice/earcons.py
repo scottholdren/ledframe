@@ -1,11 +1,13 @@
 """Earcons: short synthesized cues the wall uses instead of speech.
 
-    listening  wake word heard; wall glows blue + shimmers  (slow bloom that brightens)  ✔ chosen
-    heard    you stopped talking and we caught it        (rising blip)              (placeholder)
-    working  Claude is generating                         (soft tick, loop it)
-    done     animation is on the wall                     (ascending resolve)
-    unheard  didn't catch that / wake word with no speech (falling pair)
-    error    generation failed / validation rejected      (short dissonant buzz)
+    listening  wake word heard; wall glows blue + shimmers   slow minor bloom that brightens   ✔
+    heard      you stopped talking, we caught it            the bloom inverted, closing fast  ✔
+    working    Claude is generating (repeat every 1.2 s)    high distant shimmer, tremolo     ✔
+    done       animation lands on the wall, right now       one struck-glass note             ✔
+    unheard    didn't catch that / wake word, no speech     (placeholder, falling pair)
+    error      generation failed / validation rejected      (placeholder, buzz)
+
+All in one family: A-minor add9 pads, slow attacks, detuned voices, a short room.
 
 Rendered to WAV on first use (cache dir), played with aplay. No audio libs.
 
@@ -91,6 +93,19 @@ def _bloom(ms: float, *, attack: float, decay: float, open_at: float, open_len: 
     return _reverb((base + bright * hi * late) / (1 + bright * 0.6), ms=rev_ms, mix=rev_mix)
 
 
+def _breath(ms: float, lo: float, hi: float, *, attack=0.08, decay=0.15, seed=3) -> np.ndarray:
+    """Band-limited noise swell — an intake of breath."""
+    n = int(RATE * ms / 1000)
+    rng = np.random.default_rng(seed)
+    spec = np.fft.rfft(rng.standard_normal(n))
+    f = np.fft.rfftfreq(n, 1 / RATE)
+    spec *= np.exp(-((np.log(np.maximum(f, 1)) - np.log(np.sqrt(lo * hi))) ** 2) / (2 * (np.log(hi / lo) / 4) ** 2))
+    x = np.fft.irfft(spec, n); x /= np.abs(x).max()
+    t = np.arange(n) / RATE
+    env = (1 - np.exp(-t / attack)) * np.exp(-t / decay)
+    return x * env / max(1e-9, env.max())
+
+
 def _seq(*parts: np.ndarray, gap_ms: float = 0.0) -> np.ndarray:
     gap = np.zeros(int(RATE * gap_ms / 1000))
     out = []
@@ -115,7 +130,10 @@ SOFT = (1.0, 0.25, 0.08)
 
 def synth(name: str) -> np.ndarray:
     if name == "heard":
-        return _seq(_tone(660, 70, harmonics=SOFT), _tone(990, 110, harmonics=SOFT), gap_ms=10)
+        # You stopped talking. The bloom inverted: bright chord that closes down fast — turning inward.
+        hi = _pad(tuple(f * 2 for f in (220, 261.63, 329.63, 493.88)), 420, attack=0.03, decay=0.12, detune=0.008)
+        lo = _pad((220, 261.63, 329.63, 493.88), 420, attack=0.10, decay=0.16, detune=0.008)
+        return _reverb((hi + 0.7 * lo) / 1.7, ms=650, mix=0.5)
     if name == "listening":
         # Wake word heard. Wall glows blue and shimmers; this swells with it.
         # Minor add9 pad, slow attack, no pitch movement; an octave-up shimmer
@@ -123,11 +141,17 @@ def synth(name: str) -> np.ndarray:
         # Chosen 2026-09-04 after auditioning ~20 candidates.
         return _bloom(1200, attack=0.45, decay=0.45, open_at=0.55, open_len=0.35, rev_ms=1100, rev_mix=0.6)
     if name == "working":
-        return _tone(1320, 28, attack=0.001, decay=0.012, harmonics=(1.0, 0.1))
+        # Claude is generating. Play every WORKING_PERIOD seconds: a high distant shimmer,
+        # two detuned octave voices with a slow tremolo. The wall's shimmer breathes to the same period.
+        x = _pad((987.77, 1318.5), 900, attack=0.25, decay=0.3, detune=0.012)
+        t = np.arange(len(x)) / RATE
+        return _reverb(x * (0.7 + 0.3 * np.sin(2 * np.pi * 3.2 * t)) * 0.6, ms=600, mix=0.55)
     if name == "done":
-        return _seq(_tone(523.25, 90, harmonics=SOFT),
-                    _tone(659.25, 90, harmonics=SOFT),
-                    _tone(783.99, 260, harmonics=SOFT, decay=0.16), gap_ms=15)
+        # Animation lands on the wall at this exact moment. One clear high note, like struck glass,
+        # over a faint echo of the chord.
+        top = _pad((880, 1760), 500, attack=0.005, decay=0.16, detune=0.004)
+        lo = _pad((220, 261.63, 329.63, 493.88), 500, attack=0.02, decay=0.2, detune=0.008) * 0.35
+        return _reverb(_mix(top, lo) * 1.5, ms=800, mix=0.5)
     if name == "unheard":
         return _seq(_tone(880, 120, harmonics=SOFT, decay=0.08),
                     _tone(660, 200, harmonics=SOFT, decay=0.12), gap_ms=20)
@@ -139,6 +163,7 @@ def synth(name: str) -> np.ndarray:
 
 
 NAMES = ("listening", "heard", "working", "done", "unheard", "error")
+WORKING_PERIOD = 1.2  # seconds between "working" pulses; the wall shimmer breathes to this
 
 
 def path(name: str) -> Path:
@@ -178,13 +203,11 @@ def main(argv: list[str]) -> None:
         render(n)
     names = argv or list(NAMES)
     for n in names:
+        if n.startswith("pause:"):
+            time.sleep(float(n.split(":")[1])); continue
         print(n, flush=True)
-        play(n)
-        if n == "working":
-            for _ in range(3):
-                time.sleep(0.7)
-                play("working")
-        time.sleep(0.9)
+        play(n, block=False)          # non-blocking so sequences overlap like the real thing
+        time.sleep(float(os.environ.get("LEDFRAME_EARCON_GAP", "1.2")))
 
 
 if __name__ == "__main__":
