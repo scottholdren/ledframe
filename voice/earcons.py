@@ -2,7 +2,7 @@
 
     listening  wake word heard; wall glows blue + shimmers   slow minor bloom that brightens   ✔
     heard      you stopped talking, we caught it            the bloom inverted, closing fast  ✔
-    working    Claude is generating (repeat every 1.2 s)    high distant shimmer, tremolo     ✔
+    working    Claude is generating (loop the clip)       low breathing chord               ~ needs to be subtler
     done       animation lands on the wall, right now       one struck-glass note             ✔
     unheard    didn't catch that / wake word, no speech     (placeholder, falling pair)
     error      generation failed / validation rejected      (placeholder, buzz)
@@ -141,11 +141,18 @@ def synth(name: str) -> np.ndarray:
         # Chosen 2026-09-04 after auditioning ~20 candidates.
         return _bloom(1200, attack=0.45, decay=0.45, open_at=0.55, open_len=0.35, rev_ms=1100, rev_mix=0.6)
     if name == "working":
-        # Claude is generating. Play every WORKING_PERIOD seconds: a high distant shimmer,
-        # two detuned octave voices with a slow tremolo. The wall's shimmer breathes to the same period.
-        x = _pad((987.77, 1318.5), 900, attack=0.25, decay=0.3, detune=0.012)
-        t = np.arange(len(x)) / RATE
-        return _reverb(x * (0.7 + 0.3 * np.sin(2 * np.pi * 3.2 * t)) * 0.6, ms=600, mix=0.55)
+        # Claude is generating. CONTINUOUS texture (loop this clip), not pulses: the listening chord
+        # held low, breathing in and out on WORKING_PERIOD. Direction chosen 2026-09-04 but Scott
+        # wants it MORE SUBTLE — quieter, shallower breath, maybe fewer voices. TODO tune with the glow.
+        n = int(RATE * 4.8); t = np.arange(n) / RATE
+        x = np.zeros(n)
+        for f in (220, 261.63, 329.63, 493.88):
+            for d in (0.994, 1.006):
+                x += np.sin(2 * np.pi * f * d * t) + 0.12 * np.sin(2 * np.pi * 2 * f * d * t)
+        x /= np.abs(x).max()
+        breath = 0.35 + 0.65 * (0.5 - 0.5 * np.cos(2 * np.pi * t / 1.2)) ** 1.6
+        edge = np.minimum(1, t / 0.4) * np.minimum(1, (4.8 - t) / 0.6)
+        return _reverb(x * breath * edge * 0.55, ms=500, mix=0.45)
     if name == "done":
         # Animation lands on the wall at this exact moment. One clear high note, like struck glass,
         # over a faint echo of the chord.
