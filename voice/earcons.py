@@ -1,6 +1,7 @@
 """Earcons: short synthesized cues the wall uses instead of speech.
 
-    heard    you stopped talking and we caught it        (rising blip)
+    listening  wake word heard; wall glows blue + shimmers  (slow bloom that brightens)  ✔ chosen
+    heard    you stopped talking and we caught it        (rising blip)              (placeholder)
     working  Claude is generating                         (soft tick, loop it)
     done     animation is on the wall                     (ascending resolve)
     unheard  didn't catch that / wake word with no speech (falling pair)
@@ -28,6 +29,9 @@ SPEAKER = os.environ.get("LEDFRAME_SPEAKER", "plughw:0,0")
 GAIN = float(os.environ.get("LEDFRAME_EARCON_GAIN", "0.5"))
 
 
+SOFT_DEFAULT = (1.0, 0.25, 0.08)
+
+
 def _tone(freq: float, ms: float, *, attack=0.004, decay=None, harmonics=(1.0,), phase=0.0) -> np.ndarray:
     n = int(RATE * ms / 1000)
     t = np.arange(n) / RATE
@@ -44,6 +48,47 @@ def _tone(freq: float, ms: float, *, attack=0.004, decay=None, harmonics=(1.0,),
     r = min(n, int(RATE * 0.006))
     env[-r:] *= np.linspace(1, 0, r)
     return x * env
+
+
+def _reverb(x: np.ndarray, ms: float = 260, mix: float = 0.4) -> np.ndarray:
+    """Cheap room: convolve with a short exponentially decaying noise burst."""
+    n = int(RATE * ms / 1000)
+    rng = np.random.default_rng(7)
+    ir = rng.standard_normal(n) * np.exp(-np.arange(n) / (n / 4))
+    ir[0] = 0
+    ir /= np.abs(ir).sum() / 3
+    wet = np.convolve(x, ir)
+    dry = np.concatenate([x, np.zeros(len(wet) - len(x))])
+    out = (1 - mix) * dry + mix * wet
+    return out / max(1e-9, np.abs(out).max()) * np.abs(x).max()
+
+
+def _pad(freqs, ms: float, *, attack=0.06, decay=0.25, detune=0.004, drift=1.0, curve=1.0) -> np.ndarray:
+    """Soft chord: each note doubled and detuned, slow attack, optional pitch drift (ratio over length).
+    curve>1 pushes the drift toward the end (question-like lift)."""
+    n = int(RATE * ms / 1000)
+    t = np.arange(n) / RATE
+    x = np.zeros(n)
+    for f in freqs:
+        for d in (1 - detune, 1 + detune):
+            freq = f * d * drift ** ((t / t[-1]) ** curve)
+            phase = 2 * np.pi * np.cumsum(freq) / RATE
+            x += np.sin(phase) + 0.15 * np.sin(2 * phase)
+    x /= np.abs(x).max()
+    env = (1 - np.exp(-t / attack)) * np.exp(-t / decay)
+    r = min(n, int(RATE * 0.02))
+    env[-r:] *= np.linspace(1, 0, r)
+    return x * env
+
+
+def _bloom(ms: float, *, attack: float, decay: float, open_at: float, open_len: float,
+           rev_ms: float, rev_mix: float, bright=0.55, chord=(220, 261.63, 329.63, 493.88)) -> np.ndarray:
+    """The 'listening' cue: minor add9 pad that brightens late (octave-up copy fades in). No pitch movement."""
+    base = _pad(chord, ms, attack=attack, decay=decay, detune=0.008)
+    hi = _pad(tuple(f * 2 for f in chord), ms, attack=attack, decay=decay, detune=0.008)
+    t = np.arange(len(base)) / RATE
+    late = np.clip((t - open_at) / open_len, 0, 1) ** 2
+    return _reverb((base + bright * hi * late) / (1 + bright * 0.6), ms=rev_ms, mix=rev_mix)
 
 
 def _seq(*parts: np.ndarray, gap_ms: float = 0.0) -> np.ndarray:
@@ -71,6 +116,12 @@ SOFT = (1.0, 0.25, 0.08)
 def synth(name: str) -> np.ndarray:
     if name == "heard":
         return _seq(_tone(660, 70, harmonics=SOFT), _tone(990, 110, harmonics=SOFT), gap_ms=10)
+    if name == "listening":
+        # Wake word heard. Wall glows blue and shimmers; this swells with it.
+        # Minor add9 pad, slow attack, no pitch movement; an octave-up shimmer
+        # opens over the last stretch — the "?" comes from brightening, not pitch.
+        # Chosen 2026-09-04 after auditioning ~20 candidates.
+        return _bloom(1200, attack=0.45, decay=0.45, open_at=0.55, open_len=0.35, rev_ms=1100, rev_mix=0.6)
     if name == "working":
         return _tone(1320, 28, attack=0.001, decay=0.012, harmonics=(1.0, 0.1))
     if name == "done":
@@ -87,7 +138,7 @@ def synth(name: str) -> np.ndarray:
     raise KeyError(name)
 
 
-NAMES = ("heard", "working", "done", "unheard", "error")
+NAMES = ("listening", "heard", "working", "done", "unheard", "error")
 
 
 def path(name: str) -> Path:
@@ -96,7 +147,8 @@ def path(name: str) -> Path:
 
 def render(name: str) -> Path:
     CACHE.mkdir(parents=True, exist_ok=True)
-    x = synth(name) * GAIN
+    x = synth(name)
+    x = x / max(1e-9, np.abs(x).max()) * 0.9 * GAIN   # consistent peak across cues
     pcm = (np.clip(x, -1, 1) * 32767).astype("<i2")
     with wave.open(str(path(name)), "wb") as w:
         w.setnchannels(1); w.setsampwidth(2); w.setframerate(RATE)
@@ -111,9 +163,10 @@ def ensure() -> None:
 
 
 def play(name: str, *, block: bool = True) -> subprocess.Popen | None:
-    ensure()
+    if not path(name).exists():
+        render(name)
     p = subprocess.Popen(["aplay", "-q", "-D", SPEAKER, str(path(name))],
-                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                         stdout=subprocess.DEVNULL)
     if block:
         p.wait()
         return None
