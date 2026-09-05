@@ -30,6 +30,13 @@ Secrets (`ANTHROPIC_API_KEY`, `DEEPGRAM_API_KEY`) live only in
 
 ## First boot
 
+The first `sudo` on a fresh card asks for your password (Debian 13 / Trixie
+dropped passwordless sudo for the first user). Bootstrap installs a
+NOPASSWD rule so it's the only time. Bootstrap also sets the Wi-Fi country
+and unblocks the radio — on Trixie, Wi-Fi stays soft-blocked until a
+regulatory domain is set, even with a saved network. If the Pi doesn't
+show up on Wi-Fi at first boot, plug in Ethernet for the bootstrap.
+
 ```sh
 ssh scott@ledframe.local
 curl -fsSL https://raw.githubusercontent.com/scottholdren/ledframe/main/pi/bootstrap.sh | sudo bash

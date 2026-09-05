@@ -25,6 +25,20 @@ DEBIAN_FRONTEND=noninteractive apt-get install -y -qq \
   portaudio19-dev libasound2-dev alsa-utils libsndfile1 \
   build-essential curl >/dev/null
 
+log "passwordless sudo for $APP_USER (Trixie no longer grants it by default)"
+SUDOERS=/etc/sudoers.d/010_${APP_USER}-nopasswd
+if [ ! -f "$SUDOERS" ]; then
+  echo "$APP_USER ALL=(ALL) NOPASSWD: ALL" > "$SUDOERS"
+  chmod 440 "$SUDOERS"
+fi
+
+log "wi-fi regulatory domain (radio is soft-blocked until this is set)"
+if command -v raspi-config >/dev/null; then
+  raspi-config nonint do_wifi_country "${WIFI_COUNTRY:-US}" || true
+  rfkill unblock wifi || true
+  nmcli radio wifi on || true
+fi
+
 log "user groups (serial + audio)"
 usermod -aG dialout,audio,plugdev "$APP_USER"
 
