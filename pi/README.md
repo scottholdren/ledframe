@@ -74,3 +74,28 @@ rail — keeps PSU noise out of the audio path.
   for the ReSpeaker + small speaker. Passive heatsink is sufficient.
 - **Pi 5**: official 27 W. Without a PD supply the Pi 5 caps USB at 600 mA;
   bootstrap sets `usb_max_current_enable=1` on Pi 5 only, as a fallback.
+
+## Bench mic: INMP441 on the GPIO header
+
+Until the ReSpeaker arrives, a single INMP441 I2S mic works for desk tests.
+Enabled by two lines in `/boot/firmware/config.txt` (already on the box):
+
+```
+dtparam=i2s=on
+dtoverlay=googlevoicehat-soundcard
+```
+
+It shows up as `card 1: sndrpigooglevoi`. Wiring (Pi 4 header, physical pins):
+
+| INMP441 | Pi pin | Signal |
+|---|---|---|
+| VDD | 1 | 3.3 V (not 5 V) |
+| GND | 6 | GND |
+| SCK | 12 | GPIO 18, I2S bit clock |
+| WS  | 35 | GPIO 19, I2S word select |
+| SD  | 38 | GPIO 20, I2S data in |
+| L/R | 6 (GND) | left channel |
+
+Test: `arecord -D hw:1,0 -f S32_LE -r 48000 -c 2 -d 5 test.wav && aplay -D hw:0,0 test.wav`
+(the mic is on the left channel; the right is silence). Remove the two config
+lines when the ReSpeaker takes over — it's plain USB audio.
